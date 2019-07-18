@@ -1,4 +1,55 @@
-﻿Function mapObject
+﻿Function addUniqueRecordsToList {
+    param($recordsMap)
+
+    if($recordsMap['Transaction'].count -ne 0)
+    {
+        return @{'records'=$recordsMap['Transaction']; 'nameField'='transName'; 'type'='Transaction'}
+    }
+
+    if($recordsMap['RE Transaction'].count -ne 0)
+    {
+        return @{'records'=$recordsMap['RE Transaction']; 'nameField'='reTransName'; 'type'='RE Transaction'}
+    }
+
+    if($recordsMap['CUSIP'].count -ne 0)
+    {
+        return @{'records'=$recordsMap['CUSIP']; 'nameField'='assetName'; 'type'='CUSIP'}
+    }
+
+    if($recordsMap['Account'].count -ne 0)
+    {
+        return @{'records'=$recordsMap['Account']; 'nameField'='accountName'; 'type'='Account'}
+    }
+    return $null;
+}
+#@{'PathOnClient'=$pathFromRoot; 'VersionData'=$pathFromRoot; 'Class'=$className; 'Title'=$fileName; 'Size'=$size; 'dateComplete'=$dateComplete; 'accountName'=$accountName; 'transName'=$transName; 'reTransName'=$reTransName; 'assetName'=$assetName;} #New-Object psobject -Property @{'PathOnClient'=$pathFromRoot; 'Class'=$className; 'DateComplete'=$dateComplete; 'Name'=$fileName
+Function mapAccount
+{
+    param($recordsMap, $recordLookupMaps, $mappedList, $noMappingList)
+
+    if($recordsMap['Account'].count -ne 0)
+    {
+        mapRecordMap -recordsMap $recordsMap -fieldName 'accountName' -objectType 'Account' -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList
+    }else
+    {
+        $recordListFieldNameAndType = addUniqueRecordsToList -recordsMap $recordsMap
+
+        if($recordListFieldNameAndType -ne $null){
+            mapRecordMap -recordsMap $recordListFieldNameAndType['records'] -objectType $recordListFieldNameAndType['type'] -fieldName $recordListFieldNameAndType['nameField'] -recordLookupMaps $recordLookupMaps -mappedLis $mappedList -noMappingList $noMappingList
+
+            $recordListFieldNameAndType['records'] | ForEach-Object -Process ({ 
+                mapObject -object $_ -objectName $_[$recordListFieldNameAndType['nameField']] -objectNameMap $recordLookupMaps[$recordListFieldNameAndType['type']] -mappedList $mappedList -noMappingList $noMappingList
+                })
+        }
+        else{
+            $recordsMap.Paths | ForEach-Object -Process ({
+                $null=$canNotMap.add(@{'Class'=$recordsMap['Class']; 'Path'=$_.fullPath}); 
+            })
+        }
+    }
+}
+
+Function mapObject
 {
     param($object, $objectName, $objectNameMap, $mappedList, $noMappingList)
 
@@ -14,6 +65,14 @@
         
     }
     return;
+}
+
+Function mapRecordMap
+{
+    param($recordsMap, $objectType, $fieldName, $recordLookupMaps, $mappedList, $noMappingList)
+    $recordsMap[$objectType] | ForEach-Object -Process ({
+            mapObject -object $_ -objectName $_[$fieldName] -objectNameMap $recordLookupMaps[$objectType] -mappedList $mappedList -noMappingList $noMappingList
+        })
 }
 
 Function getAccountNameFromMeta
@@ -52,9 +111,9 @@ Function getNamesFromMeta
     #return [System.Collections.ArrayList] $arrayList;
 }
 
-Function generateRecordAddRelatedObject
+Function getFileNameAndFullPath
 {
-    param($folderPath, $pathFromBase, $versionData, $className, $size, $dateComplete, $accountName='', $transName='', $reTransName, $assetName='')
+    param($folderpath, $pathFromBase, $dateComplete)
 
     $pathFromBaseSplit = $pathFromBase.split('\');
     $pathFromBaseSliced = $pathFromBaseSplit[2..$($pathFromBaseSplit.count - 1)];
@@ -70,18 +129,32 @@ Function generateRecordAddRelatedObject
     
     $pathFromRoot = $folderPath + '\' + $($pathFromBaseSliced -join '\')
 
+    return @{'fileName'=$fileName; 'fullPath'=$pathFromRoot};
+}
+
+Function generateRecordAddRelatedObject
+{
+    param($pathFromRoot, $fileName, $className, $size, $dateComplete, $accountName='', $transName='', $reTransName, $assetName='')
+
     $record = [ordered] @{'PathOnClient'=$pathFromRoot; 'VersionData'=$pathFromRoot; 'Class'=$className; 'Title'=$fileName; 'Size'=$size; 'dateComplete'=$dateComplete; 'accountName'=$accountName; 'transName'=$transName; 'reTransName'=$reTransName; 'assetName'=$assetName;} #New-Object psobject -Property @{'PathOnClient'=$pathFromRoot; 'Class'=$className; 'DateComplete'=$dateComplete; 'Name'=$fileName
     return $record;
 }
 
 Function mapFirstPublisherLocationAndNameFile
 {
-    param($recordList, $classMappingCSV, $accountMap, $transactionMap, $assetMap, $reTransMap)
+    param($recordsMap, $classMappingCSV, $accountMap, $transactionMap, $assetMap, $reTransMap)
     $recordMapOfLists = @{};
     [System.Collections.ArrayList] $noMappingList = @();
     [System.Collections.ArrayList] $mappedList = @();
     [System.Collections.ArrayList] $driveList = @();
     [System.Collections.ArrayList] $deleteList = @();
+    [System.Collections.ArrayList] $canNotMap = @();
+
+    $recordLookupMaps = @{  'Account'=$accountMap;
+                            'Transaction'=$transactionMap;
+                            'CUSIP'=$assetMap;
+                            'RE Transaction'=$reTransMap;};
+
     $classToMappingTable = @{  'Account Agreement'           ='Account';
                                'Application'                 ='Account';
                                'Change of Address'           ='Account';
@@ -100,10 +173,11 @@ Function mapFirstPublisherLocationAndNameFile
                                'Returned Mail'               ='Account';
                                'Security Deposit Account'    ='Account';
                                'Signature Card'              ='Account';
+                               'Resignation Documents'       ='Account';
                                'Check Pickup Confirmation'   ='Transaction';
                                'Deposit'                     ='Transaction';
-                               'Distrubtion Request CASH'    ='Transaction';
-                               'Distrubtion Request IN-KIND' ='Transaction';
+                               'Distribution Request CASH'    ='Transaction';
+                               'Distribution Request IN-KIND' ='Transaction';
                                'Non-Cash Asset Change'       ='Transaction';
                                'Payment Auth One-Time'       ='Transaction';
                                'Post-Transaction Document'   ='Transaction';
@@ -131,6 +205,64 @@ Function mapFirstPublisherLocationAndNameFile
                                'Payment Auth Recurring'      ='RE Transaciton';
                                'Tax Correction'              ='Other';
                                'Other document'              ='Other';
+                               'Document'                    ='Other';
+                               'Account Approvals'           ='Drive';
+                               'FMV: Brokerage Statements'   ='Drive';
+                               'FMV: Bulk Processing'        ='Drive';
+                               'Original Transmittal Report' ='Drive';
+                               'Payment Auth Bulk Process'   ='Drive';
+                               'TNET Posting'                ='Drive';}
+
+$classToTypeMappingTable = @{  'Account Agreement'           ='Legacy Document';
+                               'Application'                 ='Application';
+                               'Change of Address'           ='Change of Address';
+                               'Change of Beneficiary'       ='Change of Benficiary';
+                               'Fee Payment Autopay Auth'    ='Fee Payment Autopay Auth';
+                               'Fee Payment One-Time Auth'   ='Fee Payment One-Time Auth';
+                               'Fee Schedule'                ='Fee Schedule';
+                               'Interested Party/POA'        ='Interested Party/POA';
+                               'Keep on File'                ='Keep on File';
+                               'Legacy Document'             ='Legacy Document';
+                               'Legal Document'              ='Legal Document';
+                               'Notice Rcvd - Forward'       ='Notice Rcvd - Forward';
+                               'Notice Sent'                 ='Notice Sent';
+                               'Payment Auth Periodic'       ='Payment Auth Periodic';
+                               'Resignation Docuemnts'       ='Resignation Docuemnts';
+                               'Returned Mail'               ='Returned Mail';
+                               'Security Deposit Account'    ='Transaction Doc';
+                               'Signature Card'              ='Signature Card';
+                               'Check Pickup Confirmation'   ='Check Pickup Confirmation';
+                               'Deposit'                     ='Transaction Doc';
+                               'Distribution Request CASH'   ='Transaction Doc';
+                               'Distribution Request IN-KIND'='Transaction Doc';
+                               'Non-Cash Asset Change'       ='Transaction Doc';
+                               'Payment Auth One-Time'       ='Transaction Doc';
+                               'Post-Transaction Document'   ='Transaction Doc';
+                               'Purchase Authorization'      ='Transaction Doc';
+                               'Rollover In Cash'            ='Transaction Doc';
+                               'Rollover In IN-KIND'         ='Transaction Doc';
+                               'Roth Conversion'             ='Transaction Doc';
+                               'Sale Authorization'          ='Transaction Doc';
+                               'Trading/Bank Withdrawal'     ='Transaction Doc';
+                               'Transfer In CASH'            ='Transaction Doc';
+                               'Transfer In IN-KIND'         ='Transaction Doc';
+                               'Transfer Out CASH'           ='Transaction Doc';
+                               'Transfer Out IN-KIND'        ='Transaction Doc';
+                               'Default Note Authorization'  ='Default Note Auth';
+                               'FMV: Group (Same CUSIP)'     ='CUSIP';
+                               'FMV: Single Account'         ='FMV';
+                               'Ownership Doc Copy'          ='Ownership Doc Copy';
+                               'Ownership Doc Original'      ='Ownership Doc Original';
+                               'Cash Report'                 ='Delete';
+                               'Closed Account Approval Form'='Delete';
+                               'Daily Checklist'             ='Delete';
+                               'Signed Checks'               ='Delete';
+                               'Deposit Recurring'           ='Recurring Transaction Doc';
+                               'Distribution Recurring'      ='Recurring Transaction Doc';
+                               'Payment Auth Recurring'      ='Recurring Transaction Doc';
+                               'Tax Correction'              ='Tax Correction';
+                               'Other document'              ='Other Document';
+                               'Document'                    ='Other Document';
                                'Account Approvals'           ='Drive';
                                'FMV: Brokerage Statements'   ='Drive';
                                'FMV: Bulk Processing'        ='Drive';
@@ -139,17 +271,36 @@ Function mapFirstPublisherLocationAndNameFile
                                'TNET Posting'                ='Drive';}
 
     #Write-Host $recordList;
-    $recordList | ForEach-Object -Process (
+    #$recordsMap
+
+    #if($_ -eq $null)
+    #{
+    #    return;
+    #}
+    #Write-Host $_.values
+
+    if($recordsMap['Paths'] -eq $null -or $recordsMap['Paths'].count -eq 0)
     {
-        if($_ -eq $null)
-        {
-            return;
-        }
-        #Write-Host $_.values
-        if($_.Class -eq 'Legacy Document')
-        {
-            #Add-Member -NotePropertyName 'Type' -NotePropertyValue 'Legacy Document' -InputObject $psobject
-        
+        $null = $recordMapOfLists.add('mappedRecords', $mappedList);
+        $null = $recordMapOfLists.add('nonMappedRecords', $noMappingList);
+        $null = $recordMapOfLists.add('driveList',$driveList);
+        $null = $recordMapOfLists.add('deleteList',$deleteList);
+        $null = $recordMapOfLists.add('unmappable', $canNotMap);
+
+        return $recordMapOfLists;
+    }
+
+    <#if($recordsMap['Paths'].fullPath -match '0\\0-999\\45\\L\\L\\0231290 Beckley Distribution Request IN-KIND 264635 (ID 45)\\FMV.pdf')
+    {
+        write-host 'path'
+    }#>
+
+
+    if($recordsMap['Class'] -eq 'Legacy Document')
+    {
+        $recordsMap['Account'] | ForEach-Object -Process ({
+        #Add-Member -NotePropertyName 'Type' -NotePropertyValue 'Legacy Document' -InputObject $psobject
+    
             if($_.Title -match '\d{7}' -and $accountMap.ContainsKey($matches[0]))
             {
                 #Write-Host $_.Title
@@ -163,82 +314,188 @@ Function mapFirstPublisherLocationAndNameFile
                 #Write-Host 'No Account'
                 $null = $noMappingList.add($_);
             }
-            return;
-        }
+        })
+    }
 
-        #Write-Host $_.Class
+    #Write-Host $_.Class
 
-        #return;
-        $mappingObject = $classToMappingTable[$_.Class];
+    #return;
+    $type  = $classToTypeMappingTable[$recordsMap['Class']];
+    $mappingObject = $classToMappingTable[$recordsMap['Class']];
 
-        if($mappingObject -eq 'Account' -and $_.accountName -ne $null -and  $_.accountName -ne '')
+    if($mappingObject -eq 'Account')
+    {
+
+        mapAccount -recordsMap $recordsMap -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList -canNotMapList $canNotMap
+
+        <#if($recordsMap['Account'].count -ne 0)
         {
-            mapObject -object $_ -objectName $_.accountName -objectNameMap $accountMap -mappedList $mappedList -noMappingList $noMappingList
-            return;
-        }
-
-        if($mappingObject -eq 'Transaction' -and $_.transName -ne $null -and  $_.transName -ne '')
-        {
-            mapObject -object $_ -objectName $_.transName -objectNameMap $transactionMap -mappedList $mappedList -noMappingList $noMappingList
-            return;
-        }
-
-        if($mappingObject -eq 'CUSIP' -and $_.assetName -ne $null -and  $_.assetName -ne '')
-        {
-            mapObject -object $_ -objectName $_.assetName -objectNameMap $assetMap -mappedList $mappedList -noMappingList $noMappingList
-            return;
-        }
-
-        if($mappingObject -eq 'RE Transaciton' -and $_.reTransName -ne $null -and $_.reTransName -ne '')
-        {
-            mapObject -object $_ -objectName $_.reTransName -objectNameMap $reTransMap -mappedList $mappedList -noMappingList $noMappingList
-            return;
-        }
-
-        if($mappingObject -eq 'Other')
-        {
-            if($_.accountName -ne '')
-            {
+            $recordsMap['Account'] | ForEach-Object -Process ({
                 mapObject -object $_ -objectName $_.accountName -objectNameMap $accountMap -mappedList $mappedList -noMappingList $noMappingList
-            }
+            })
+        }else
+        {
+            $recordListFieldNameAndType = addUniqueRecordsToList -recordsMap $recordsMap
 
-            if($_.reTransName -ne '')
-            {
-                mapObject -object $_ -objectName $_.reTransName -objectNameMap $reTransMap -mappedList $mappedList -noMappingList $noMappingList
+            if($recordListFieldNameAndType -ne $null){
+                $recordListFieldNameAndType['records'] | ForEach-Object -Process ({ 
+                    mapObject -object $_ -objectName $_[$recordListFieldNameAndType['nameField']] -objectNameMap $recordLookupMaps[$recordListFieldNameAndType['type']] -mappedList $mappedList -noMappingList $noMappingList
+                    })
             }
+            else{
+                $recordsMap.Paths | ForEach-Object -Process ({
+                    $null=$canNotMap.add(@{'Class'=$recordsMap['Class']; 'Path'=$_.fullPath}); 
+                })
+            }
+        }#>
+        
+        #mapObject -object $_ -objectName $_.accountName -objectNameMap $accountMap -mappedList $mappedList -noMappingList $noMappingList
+        #return;
+    }
 
-            if($_.transName -ne '')
-            {
+    if($mappingObject -eq 'Transaction')
+    {
+        if($recordsMap['Transaction'].count -ne 0)
+        {
+            $recordsMap['Transaction'] | ForEach-Object -Process ({
                 mapObject -object $_ -objectName $_.transName -objectNameMap $transactionMap -mappedList $mappedList -noMappingList $noMappingList
-            }
+            })
+        }else
+        {
 
-            if($_.assetName -ne '')
+            if($recordsMap['Class'] -eq 'Distrubtion Request IN-KIND')
             {
-                mapObject -object $_ -objectName $_.assetName -objectNameMap $assetMap -mappedList $mappedList -noMappingList $noMappingList
+                Write-Host 'test'
             }
-            return;
-            #mapObject -object $_ -objectNameMap 
-            #return;
-        }
+            $recordListFieldNameAndType = addUniqueRecordsToList -recordsMap $recordsMap
 
-        if($mappingOjbect -eq 'Delete')
+            if($recordListFieldNameAndType -ne $null){
+                $recordListFieldNameAndType['records'] | ForEach-Object -Process ({ 
+                    mapObject -object $_ -objectName $_[$recordListFieldNameAndType['nameField']] -objectNameMap $recordLookupMaps[$recordListFieldNameAndType['type']] -mappedList $mappedList -noMappingList $noMappingList
+                    })
+            }
+            else{
+                $recordsMap.Paths | ForEach-Object -Process ({
+                    $null=$canNotMap.add(@{'Class'=$recordsMap['Class']; 'Path'=$_.fullPath}); 
+                })
+            }
+        }
+        
+        #mapObject -object $_ -objectName $_.accountName -objectNameMap $accountMap -mappedList $mappedList -noMappingList $noMappingList
+        #return;
+    }
+
+    if($mappingObject -eq 'CUSIP')
+    {
+        if($recordsMap['CUSIP'].count -ne 0)
         {
-            $deleteList.add($_);
-            return;
-        }
-
-        if($mappingOjbect -eq 'Drive')
+            $recordsMap['CUSIP'] | ForEach-Object -Process ({
+                mapObject -object $_ -objectName $_.assetName -objectNameMap $assetMap -mappedList $mappedList -noMappingList $noMappingList
+            })
+        }else
         {
-            $driveList.add($_);
-            return;
+            $recordListFieldNameAndType = addUniqueRecordsToList -recordsMap $recordsMap
+
+            if($recordListFieldNameAndType -ne $null){
+                $recordListFieldNameAndType['records'] | ForEach-Object -Process ({ 
+                    mapObject -object $_ -objectName $_[$recordListFieldNameAndType['nameField']] -objectNameMap $recordLookupMaps[$recordListFieldNameAndType['type']] -mappedList $mappedList -noMappingList $noMappingList
+                    })
+            }
+            else{
+                $recordsMap.Paths | ForEach-Object -Process ({
+                    $null=$canNotMap.add(@{'Class'=$recordsMap['Class']; 'Path'=$_.fullPath}); 
+                })
+            }
+        }
+        
+        #mapObject -object $_ -objectName $_.accountName -objectNameMap $accountMap -mappedList $mappedList -noMappingList $noMappingList
+        #return;
+    }
+
+    if($mappingObject -eq 'RE Transaciton')
+    {
+        if($recordsMap['RE Transaciton'].count -ne 0)
+        {
+            $recordsMap['RE Transaciton'] | ForEach-Object -Process ({
+                mapObject -object $_ -objectName $_.reTransName -objectNameMap $reTransMap -mappedList $mappedList -noMappingList $noMappingList
+            })
+        }else
+        {
+            $recordListFieldNameAndType = addUniqueRecordsToList -recordsMap $recordsMap
+
+            if($recordListFieldNameAndType -ne $null){
+                $recordListFieldNameAndType['records'] | ForEach-Object -Process ({ 
+                    mapObject -object $_ -objectName $_[$recordListFieldNameAndType['nameField']] -objectNameMap $recordLookupMaps[$recordListFieldNameAndType['type']] -mappedList $mappedList -noMappingList $noMappingList
+                    })
+            }
+            else{
+                $recordsMap.Paths | ForEach-Object -Process ({
+                    $null=$canNotMap.add(@{'Class'=$recordsMap['Class']; 'Path'=$_.fullPath}); 
+                })
+            }
+        }
+        
+        #mapObject -object $_ -objectName $_.accountName -objectNameMap $accountMap -mappedList $mappedList -noMappingList $noMappingList
+        #return;
+    }
+
+    if($mappingObject -eq 'Other')
+    {
+        if($recordsMap['Account'].count -ne 0)
+        {
+            $recordsMap['Account'] | ForEach-Object -Process ({
+                mapObject -object $_ -objectName $_.accountName -objectNameMap $accountMap -mappedList $mappedList -noMappingList $noMappingList
+            })
         }
 
-    })
+        if($recordsMap['RE Transaciton'].count -ne 0)
+        {
+            $recordsMap['RE Transaciton'] | ForEach-Object -Process ({
+                mapObject -object $_ -objectName $_.reTransName -objectNameMap $reTransMap -mappedList $mappedList -noMappingList $noMappingList
+            })
+        }
+
+        if($recordsMap['Transaction'].count -ne 0)
+        {
+            $recordsMap['Transaction'] | ForEach-Object -Process ({
+                mapObject -object $_ -objectName $_.transName -objectNameMap $transactionMap -mappedList $mappedList -noMappingList $noMappingList
+            })
+        }
+
+        if($recordsMap['CUSIP'].count -ne 0)
+        {
+            $recordsMap['CUSIP'] | ForEach-Object -Process ({
+                mapObject -object $_ -objectName $_.assetName -objectNameMap $assetMap -mappedList $mappedList -noMappingList $noMappingList
+            })
+        }
+        #mapObject -object $_ -objectNameMap 
+        #return;
+    }
+
+    if($mappingOjbect -eq 'Delete')
+    {
+        $deleteList = $(addUniqueRecordsToList -recordsMap $recordsMap)['records'];
+    }
+
+    if($mappingOjbect -eq 'Drive')
+    {
+        $deleteList = $(addUniqueRecordsToList -recordsMap $recordsMap)['records'];
+    }
+
+    if($mappingObject -eq '' -or $mappingObject -eq $null)
+    {
+
+        $recordsMap.Paths | ForEach-Object -Process ({
+            $null = $canNotMap.add(@{'Class'=$recordsMap['Class']; 'Path'=$_.fullPath}); 
+        })
+        
+    }
 
     $null = $recordMapOfLists.add('mappedRecords', $mappedList);
     $null = $recordMapOfLists.add('nonMappedRecords', $noMappingList);
     $null = $recordMapOfLists.add('driveList',$driveList);
     $null = $recordMapOfLists.add('deleteList',$deleteList);
+    $null = $recordMapOfLists.add('unmappable', $canNotMap);
 
     return $recordMapOfLists;
 }
@@ -261,7 +518,7 @@ Function handleVaultFolderMapping
         $vaultRename= "Temp_$($vaultFolderCSV.Count + 3)";
         $folderPath = "$fileRoot\Files\$vaultRename";
         
-        $vaultFolderCSV.add($(New-Object psobject -Property @{'vaultId'=$vaultId; 'folderName'=$vaultRename; 'folderPath'=$folderPath}));
+        $null = $vaultFolderCSV.add($(New-Object psobject -Property @{'vaultId'=$vaultId; 'folderName'=$vaultRename; 'folderPath'=$folderPath}));
         
         $cleanedId = $vaultId.Substring(1,$vaultId.Length-2);
         
@@ -323,51 +580,62 @@ Function parseMFileObject{
         getNamesFromMeta -index $reTransNameIndex -mfileObjectVersion $mfileObjectVersion -arrayList $reTransList
     }
 
-    [System.Collections.ArrayList] $recordList = @();
+    [Hashtable]$recordsMap = @{};
+    $recordsMap.add('Class', $className);
+    $recordsMap.add('Transaction', [System.Collections.ArrayList] @());
+    $recordsMap.add('RE Transaciton', [System.Collections.ArrayList] @());
+    $recordsMap.add('Account', [System.Collections.ArrayList] @());
+    $recordsMap.add('CUSIP', [System.Collections.ArrayList] @());
+    $recordsMap.add('Paths', [System.Collections.ArrayList] @());
 
-    $docfiles = $($mfileObjectVersion.docfiles.docfile);
+    $docfiles = @($mfileObjectVersion.docfiles.docfile);
+    $noDocFile = 0;
     $docfiles | ForEach-Object -Process (
     {
         if($_ -eq $null)
         {
+            $noDocFile +=1;
+            #Write-Host $noDocFile
             return;
         }
 
-        $pathFromBase = $_.pathfrombase;
+        $pathFromRoot = getFileNameAndFullPath -pathFromBase $_.pathfrombase -folderpath $folderPath  -dateComplete $dateComplete
+
+        $null = $recordsMap['Paths'].add($pathFromRoot);
 
         $size = $_.Size
 
         if($accountList.count -ne 0){ 
             $accountList | ForEach-Object -Process ({
-                $record = generateRecordAddRelatedObject -accountName $_ -className $className -pathFromBase $pathFromBase -folderPath $folderPath -size $size -dateComplete $dateComplete
-                $null = $recordList.add($record);
+                $record = generateRecordAddRelatedObject -accountName $_ -className $className -pathFromRoot $pathFromRoot.fullPath -size $size -dateComplete $dateComplete
+                $null = $recordsMap['Account'].add($record);
             })
         }
 
         if($transactionList.count -ne 0){
             $transactionList | ForEach-Object -Process ({
-                    $record = generateRecordAddRelatedObject -transName $_ -className $className -pathFromBase $pathFromBase -folderPath $folderPath -size $size -dateComplete $dateComplete
-                    $null = $recordList.add($record);
+                    $record = generateRecordAddRelatedObject -transName $_ -className $className -pathFromRoot $pathFromRoot.fullPath -size $size -dateComplete $dateComplete
+                    $null = $recordsMap['Transaction'].add($record);
                 })
         
         }
         
         if($assetList.count -ne 0){
             $assetList | ForEach-Object -Process ({
-                    $record = generateRecordAddRelatedObject -assetName $_ -className $className -pathFromBase $pathFromBase -folderPath $folderPath -size $size -dateComplete $dateComplete
-                    $null = $recordList.add($record);
+                    $record = generateRecordAddRelatedObject -assetName $_ -className $className -pathFromRoot $pathFromRoot.fullPath -size $size -dateComplete $dateComplete
+                    $null = $recordsMap['CUSIP'].add($record);
                 })
         
         }
 
         if($reTransList.count -ne 0){
             $reTransList | ForEach-Object -Process ({
-                    $record = generateRecordAddRelatedObject -reTransName $_ -className $className -pathFromBase $pathFromBase -folderPath $folderPath -size $size -dateComplete $dateComplete
-                    $null = $recordList.add($record);
+                    $record = generateRecordAddRelatedObject -reTransName $_ -className $className -pathFromRoot $pathFromRoot.fullPath -size $size -dateComplete $dateComplete
+                    $null = $recordsMap['RE Transaciton'].add($record);
                 })
         }
 
-        $pathFromBase = $mfileObjectVersion.docfiles.docfile.pathfrombase;
+        <#$pathFromBase = $mfileObjectVersion.docfiles.docfile.pathfrombase;
         $pathFromBaseSplit = $pathFromBase.split('\');
         $pathFromBaseSliced = $pathFromBaseSplit[2..$($pathFromBaseSplit.count - 1)];
         $fileName = "$dateComplete-$($pathFromBaseSplit[$pathFromBaseSplit.count - 1].split('.')[0])";
@@ -376,9 +644,9 @@ Function parseMFileObject{
 
         $size = $mfileObjectVersion.docfiles.size#>
     })
-    
+    $null = $recordsMap.add('nullDoc', $noDocFile);
 
-    return $recordList; #@{'PathOnClient'=$pathFromRoot; 'Class'=$className; 'DateComplete'=$dateComplete; 'Name'=$fileName} #New-Object psobject -Property @{'PathOnClient'=$pathFromRoot; 'Class'=$className; 'DateComplete'=$dateComplete; 'Name'=$fileName}
+    return [hashtable] $recordsMap; #@{'PathOnClient'=$pathFromRoot; 'Class'=$className; 'DateComplete'=$dateComplete; 'Name'=$fileName} #New-Object psobject -Property @{'PathOnClient'=$pathFromRoot; 'Class'=$className; 'DateComplete'=$dateComplete; 'Name'=$fileName}
 }
 
 #main
@@ -427,6 +695,7 @@ Function generateUploadCsvForContentVer
     [System.Collections.ArrayList] $recordsCsvNoAccount = @();
     [System.Collections.ArrayList] $googleDriveCSV = @();
     [System.Collections.ArrayList] $deleteCSV = @();
+    [System.Collections.ArrayList] $unMappable = @();
     
 
     
@@ -444,6 +713,7 @@ Function generateUploadCsvForContentVer
         $vaultFolderCSV = @(Import-Csv $vaultFolderCSVPath);
     }
     $someNum = 0;
+    $noDocs = 0;
     Get-ChildItem -Path $metaDataDir -Filter 'Content*.xml' | ForEach-Object -Process ({
         [xml]$currentContentDocument = Get-Content $_.FullName;
         #echo $currentContentDocument.content.object;
@@ -451,11 +721,14 @@ Function generateUploadCsvForContentVer
             
             $path = handleVaultFolderMapping -object $_ -fileRoot $fileRoot -vaultFolderCSV $vaultFolderCSV -vaultFolderCSVPath $vaultFolderCSVPath
 
-            $recordList = parseMFileObject -mfileObject $_ -folderPath $path
+            $recordsMap = parseMFileObject -mfileObject $_ -folderPath $path
+
+            $noDocs += $recordsMap['nullDoc'];
             
-            $recordMapOfLists = mapFirstPublisherLocationAndNameFile -recordList $recordList -accountMap $accountsNameToIdMap -transactionMap $transactionsNameToIdMap -reTransMap $reTransactionsNameToIdMap -assetMap $assetNameToIdMap
+            $recordMapOfLists = mapFirstPublisherLocationAndNameFile -recordsMap $recordsMap -accountMap $accountsNameToIdMap -transactionMap $transactionsNameToIdMap -reTransMap $reTransactionsNameToIdMap -assetMap $assetNameToIdMap
 
             #Write-Host $recordMapOfLists['mappedRecords'].Class;
+            try{
             $recordMapOfLists['mappedRecords'] | ForEach-Object -Process ({
                 #Write-Host $_.Size
                 if($_.PathOnClient -match '.css' -or $_.PathOnClient -match '.gif')
@@ -472,7 +745,10 @@ Function generateUploadCsvForContentVer
                     #write-host $_
                     $null = $recordsCsv.add($(New-Object Psobject -Property $_));
                 }
-            })
+            })}
+            catch{
+                Write-Host 'Error'
+            }
 
             if($recordMapOfLists['nonMappedRecords'].count -ne 0)
             {
@@ -497,11 +773,19 @@ Function generateUploadCsvForContentVer
                     })
             }
 
+            if($recordMapOfLists['unmappable'].count -ne 0)
+            {
+                $recordMapOfLists['unmappable'] | ForEach-Object -Process ({
+                        $null = $unMappable.add($(New-Object psobject -Property $_));
+                    })
+            }
+
             $someNum++;
             
             if($someNum % 1000 -eq 0)
             {
-                echo $someNum;    
+                echo 'Records processed' $someNum;    
+                echo 'Null docs' $noDocs;
             }
         })
         
@@ -512,5 +796,6 @@ Function generateUploadCsvForContentVer
     $recordsCsvToBig | Export-Csv -Path C:\Users\dcurtin\Desktop\ToBigtestCsv.csv -NoTypeInformation
     $googleDriveCSV | Export-Csv -Path C:\Users\dcurtin\Desktop\googleDrive.csv -NoTypeInformation
     $deleteCSV | Export-Csv -Path C:\Users\dcurtin\Desktop\deleteCsv.csv -NoTypeInformation
+    $unMappable | Export-Csv -Path C:\Users\dcurtin\Desktop\unMappable.csv -NoTypeInformation
 
 }
