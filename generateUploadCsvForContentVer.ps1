@@ -1,4 +1,5 @@
-﻿Function addUniqueRecordsToList {
+﻿
+Function addUniqueRecordsToList {
     param($recordsMap)
 
     if($recordsMap['Transaction'].count -ne 0)
@@ -596,6 +597,106 @@ Function parseMFileObject{
     return [hashtable] $recordsMap; #@{'PathOnClient'=$pathFromRoot; 'Class'=$className; 'DateComplete'=$dateComplete; 'Name'=$fileName} #New-Object psobject -Property @{'PathOnClient'=$pathFromRoot; 'Class'=$className; 'DateComplete'=$dateComplete; 'Name'=$fileName}
 }
 
+
+Function generateCsvJob
+{
+    [CmdletBinding()]
+
+    param ([Parameter(ValueFromPipeline)] $Input)
+    #Write-Host $Input.doc;
+    [System.Collections.ArrayList] $recordsCsv = @();
+    [System.Collections.ArrayList] $recordsCsvToBig = @();
+    [System.Collections.ArrayList] $recordsCsvNoAccount = @();
+    [System.Collections.ArrayList] $googleDriveCSV = @();
+    [System.Collections.ArrayList] $deleteCSV = @();
+    [System.Collections.ArrayList] $unMappable = @();
+    #@{'doc'=$_; 'accountsNameToIdMap'=$accountsNameToIdMap; 'assetNameToIdMap'=$assetNameToIdMap; 'transactionsNameToIdMap'=$transactionsNameToIdMap; 'reTransactionsNameToIdMap'=$reTransactionsNameToIdMap; 'fileRoot'=$fileRoot; 'vaultFolderCSVPath'=$vaultFolderCSVPath};
+    $accountsNameToIdMap = $Input.accountsNameToIdMap;
+    $assetNameToIdMap = $Input.assetNameToIdMap;
+    $transactionsNameToIdMap = $Input.transactionsNameToIdMap;
+    $reTransactionsNameToIdMap = $Input.reTransactionsNameToIdMap;
+    $fileRoot=$Input.fileRoot;
+    $vaultFolderCSVPath=$Input.vaultFolderCSVPath;
+    $vaultFolderCSV=$Input.vaultFolderCSV;
+
+    [xml]$currentContentDocument = Get-Content $Input.doc;
+    #echo $currentContentDocument.content.object;
+    $currentContentDocument.content.object | ForEach-Object -Process ({
+        
+        $path = handleVaultFolderMapping -object $_ -fileRoot $fileRoot -vaultFolderCSV $vaultFolderCSV -vaultFolderCSVPath $vaultFolderCSVPath
+
+        $recordsMap = parseMFileObject -mfileObject $_ -folderPath $path
+
+        $noDocs += $recordsMap['nullDoc'];
+        
+        $recordMapOfLists = mapFirstPublisherLocationAndNameFile -recordsMap $recordsMap -accountMap $accountsNameToIdMap -transactionMap $transactionsNameToIdMap -reTransMap $reTransactionsNameToIdMap -assetMap $assetNameToIdMap
+        
+        #Write-Host $recordMapOfLists['mappedRecords'].Class;
+        try{
+        $recordMapOfLists['mappedRecords'] | ForEach-Object -Process ({
+            #Write-Host $_.Size
+            if($_.PathOnClient -match '.css' -or $_.PathOnClient -match '.gif')
+            {
+                return;
+            }
+
+
+            if([int]$_.Size -ge 30000000)
+            {
+                $null = $recordsCsvToBig.add($(New-Object Psobject -Property $_));
+            }else
+            {
+                #write-host $_
+                $null = $recordsCsv.add($(New-Object Psobject -Property $_));
+            }
+        })}
+        catch{
+            Write-Host 'Error'
+        }
+
+        if($recordMapOfLists['nonMappedRecords'].count -ne 0)
+        {
+            $recordMapOfLists['nonMappedRecords'] | ForEach-Object -Process ({
+                $null = $recordsCsvNoAccount.add($(New-Object Psobject -Property $_));
+            })
+            #Write-host $recordsCsvNoAccount
+            #$recordsCsvNoAccount += @($recordMapOfLists.nonMappedRecords);
+        }
+
+        if($recordMapOfLists['driveList'].count -ne 0)
+        {
+            $recordMapOfLists['driveList'] | ForEach-Object -Process ({
+                    $null = $googleDriveCSV.add($(New-Object psobject -Property $_));
+                })
+        }
+        
+        if($recordMapOfLists['deleteList'].count -ne 0)
+        {
+            $recordMapOfLists['deleteList'] | ForEach-Object -Process ({
+                    $null = $deleteCSV.add($(New-Object psobject -Property $_));
+                })
+        }
+
+        if($recordMapOfLists['unmappable'].count -ne 0)
+        {
+            $recordMapOfLists['unmappable'] | ForEach-Object -Process ({
+                    $null = $unMappable.add($(New-Object psobject -Property $_));
+                })
+        }
+
+        #$someNum++;
+        
+        #if($someNum % 1000 -eq 0)
+        #{
+        #    echo 'Records processed' $someNum;    
+        #    echo 'Null docs' $noDocs;
+        #}
+        })
+        return @{'mapped'=$recordsCsv; 'nonMapped'=$recordsCsvNoAccount}
+    }
+
+    #
+
 #main
 Function generateUploadCsvForContentVer
 {
@@ -661,82 +762,44 @@ Function generateUploadCsvForContentVer
     }
     $someNum = 0;
     $noDocs = 0;
-    Get-ChildItem -Path $metaDataDir -Filter 'Content*.xml' | ForEach-Object -Process ({
-        [xml]$currentContentDocument = Get-Content $_.FullName;
-        #echo $currentContentDocument.content.object;
-        $currentContentDocument.content.object | ForEach-Object -Process ({
-            
-            $path = handleVaultFolderMapping -object $_ -fileRoot $fileRoot -vaultFolderCSV $vaultFolderCSV -vaultFolderCSVPath $vaultFolderCSVPath
+    $contentFiles = Get-ChildItem -Path $metaDataDir -Filter 'Content*.xml' 
+    $jobObjects = @{};
 
-            $recordsMap = parseMFileObject -mfileObject $_ -folderPath $path
-
-            $noDocs += $recordsMap['nullDoc'];
-            
-            $recordMapOfLists = mapFirstPublisherLocationAndNameFile -recordsMap $recordsMap -accountMap $accountsNameToIdMap -transactionMap $transactionsNameToIdMap -reTransMap $reTransactionsNameToIdMap -assetMap $assetNameToIdMap
-            
-            #Write-Host $recordMapOfLists['mappedRecords'].Class;
-            try{
-            $recordMapOfLists['mappedRecords'] | ForEach-Object -Process ({
-                #Write-Host $_.Size
-                if($_.PathOnClient -match '.css' -or $_.PathOnClient -match '.gif')
-                {
-                    return;
-                }
-
-
-                if([int]$_.Size -ge 30000000)
-                {
-                    $null = $recordsCsvToBig.add($(New-Object Psobject -Property $_));
-                }else
-                {
-                    #write-host $_
-                    $null = $recordsCsv.add($(New-Object Psobject -Property $_));
-                }
-            })}
-            catch{
-                Write-Host 'Error'
-            }
-
-            if($recordMapOfLists['nonMappedRecords'].count -ne 0)
+    $contentFiles | ForEach-Object -Process ({
+        #Write-Host $_.FullName
+        $job = Start-Job -InitializationScript {Import-Module C:\Users\dcurtin\Desktop\GenerateCsvForContentVersion\generateUploadCsvForContentVer.ps1} -scriptBlock { $Input | generateCsvJob } -InputObject $(@{'doc'=$_.FullName; 'accountsNameToIdMap'=$accountsNameToIdMap; 'assetNameToIdMap'=$assetNameToIdMap; 'transactionsNameToIdMap'=$transactionsNameToIdMap; 'reTransactionsNameToIdMap'=$reTransactionsNameToIdMap; 'fileRoot'=$fileRoot; 'vaultFolderCSVPath'=$vaultFolderCSVPath; 'vaultFolderCSV'=$vaultFolderCSV});
+        $null = $jobObjects.add($job.Id, $job);
+    })
+    
+    while($jobObjects.Count -ne 0)
+    {
+        [System.Collections.ArrayList] $completedJobs = @();
+        [System.Collections.ArrayList]$jobKeys = @();
+        $jobKeys.AddRange($jobObjects.Keys);
+        $jobKeys | ForEach-Object -Process ({
+            $updatedJob = Get-Job -id $_;
+            if($updatedJob.State -eq 'Completed')
             {
-                $recordMapOfLists['nonMappedRecords'] | ForEach-Object -Process ({
-                    $null = $recordsCsvNoAccount.add($(New-Object Psobject -Property $_));
-                })
-                #Write-host $recordsCsvNoAccount
-                #$recordsCsvNoAccount += @($recordMapOfLists.nonMappedRecords);
-            }
-
-            if($recordMapOfLists['driveList'].count -ne 0)
-            {
-                $recordMapOfLists['driveList'] | ForEach-Object -Process ({
-                        $null = $googleDriveCSV.add($(New-Object psobject -Property $_));
-                    })
-            }
-            
-            if($recordMapOfLists['deleteList'].count -ne 0)
-            {
-                $recordMapOfLists['deleteList'] | ForEach-Object -Process ({
-                        $null = $deleteCSV.add($(New-Object psobject -Property $_));
-                    })
-            }
-
-            if($recordMapOfLists['unmappable'].count -ne 0)
-            {
-                $recordMapOfLists['unmappable'] | ForEach-Object -Process ({
-                        $null = $unMappable.add($(New-Object psobject -Property $_));
-                    })
-            }
-
-            $someNum++;
-            
-            if($someNum % 1000 -eq 0)
-            {
-                echo 'Records processed' $someNum;    
-                echo 'Null docs' $noDocs;
+                $null = $completedJobs.add($updatedJob);
+                $jobObjects.Remove($_);
             }
         })
+        if($completedJobs.Count -ne 0)
+        {
+            $completedJobs | ForEach-Object -Process ({
+                $result = Receive-Job -id $_.Id
+                $recordsCsv.AddRange($result['mapped']);
+                $recordsCsvNoAccount.AddRange($result['nonMapped']);
+                # return @{'unmapped'=$unMappable; 'delete'=$deleteCSV; 'drive'=$googleDriveCSV; 'nonMapped'=$recordsCsvNoAccount; 'mapped'=$recordsCsv}
+            })
+            write-host "$($completedJobs.count) Finished"
+        }else
+        {
+            Start-Sleep -Seconds 5
+        }
         
-    })
+    
+    }
 
     $recordsCsv | Export-Csv -Path C:\Users\dcurtin\Desktop\testCsv.csv -NoTypeInformation
     $recordsCsvNoAccount | Export-Csv -Path C:\Users\dcurtin\Desktop\noAccounttestCsv.csv -NoTypeInformation
@@ -744,5 +807,6 @@ Function generateUploadCsvForContentVer
     $googleDriveCSV | Export-Csv -Path C:\Users\dcurtin\Desktop\googleDrive.csv -NoTypeInformation
     $deleteCSV | Export-Csv -Path C:\Users\dcurtin\Desktop\deleteCsv.csv -NoTypeInformation
     $unMappable | Export-Csv -Path C:\Users\dcurtin\Desktop\unMappable.csv -NoTypeInformation
-
+    Get-Job | Remove-Job -Force
 }
+
