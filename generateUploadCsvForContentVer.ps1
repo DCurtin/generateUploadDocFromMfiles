@@ -3,76 +3,117 @@
 
     if($recordsMap['Transaction'].count -ne 0)
     {
-        return @{'records'=$recordsMap['Transaction']; 'nameField'='transName'; 'type'='Transaction'}
+        return @{'records'=$recordsMap['Transaction']; 'fieldName'='transName'; 'type'='Transaction'}
     }
 
     if($recordsMap['RE Transaction'].count -ne 0)
     {
-        return @{'records'=$recordsMap['RE Transaction']; 'nameField'='reTransName'; 'type'='RE Transaction'}
+        return @{'records'=$recordsMap['RE Transaction']; 'fieldName'='reTransName'; 'type'='RE Transaction'}
     }
 
     if($recordsMap['CUSIP'].count -ne 0)
     {
-        return @{'records'=$recordsMap['CUSIP']; 'nameField'='assetName'; 'type'='CUSIP'}
+        return @{'records'=$recordsMap['CUSIP']; 'fieldName'='assetName'; 'type'='CUSIP'}
     }
 
     if($recordsMap['Account'].count -ne 0)
     {
-        return @{'records'=$recordsMap['Account']; 'nameField'='accountName'; 'type'='Account'}
+        return @{'records'=$recordsMap['Account']; 'fieldName'='accountName'; 'type'='Account'}
     }
     return $null;
 }
-#@{'PathOnClient'=$pathFromRoot; 'VersionData'=$pathFromRoot; 'Class'=$className; 'Title'=$fileName; 'Size'=$size; 'dateComplete'=$dateComplete; 'accountName'=$accountName; 'transName'=$transName; 'reTransName'=$reTransName; 'assetName'=$assetName;} #New-Object psobject -Property @{'PathOnClient'=$pathFromRoot; 'Class'=$className; 'DateComplete'=$dateComplete; 'Name'=$fileName
-Function mapAccount
-{
-    param($recordsMap, $recordLookupMaps, $mappedList, $noMappingList)
 
-    if($recordsMap['Account'].count -ne 0)
+Function mapAccountToId
+{
+    param($recordType, $recordsMap, $recordLookupMaps, $mappedList, $noMappingList, $canNotMap)
+    mapObjectMapToId -recordType $recordType -objectType 'Account' -fieldName 'accountName' -recordsMap $recordsMap -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList -canNotMap $canNotMap
+}
+
+Function mapAssettToId
+{
+    param($recordType, $recordsMap, $recordLookupMaps, $mappedList, $noMappingList, $canNotMap)
+    mapObjectMapToId -recordType $recordType -objectType 'CUSIP' -fieldName 'assetName' -recordsMap $recordsMap -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList -canNotMap $canNotMap
+}
+
+Function mapRETransactionToId
+{
+    param($recordType, $recordsMap, $recordLookupMaps, $mappedList, $noMappingList, $canNotMap)
+    mapObjectMapToId -recordType $recordType -objectType 'RE Transaction' -fieldName 'reTransName' -recordsMap $recordsMap -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList -canNotMap $canNotMap
+}
+
+Function mapTransactionToId
+{
+    param($recordType, $recordsMap, $recordLookupMaps, $mappedList, $noMappingList, $canNotMap)
+    try{
+        mapObjectMapToId -recordType $recordType -objectType 'Transaction' -fieldName 'transName' -recordsMap $recordsMap -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList -canNotMap $canNotMap
+        }catch
+        {
+            write-host 'thing'
+        }
+}
+
+Function mapObjectMapToId
+{
+    param($recordType, $objectType, $fieldName, $recordsMap, $recordLookupMaps, $mappedList, $noMappingList, $canNotMap)
+
+    if($recordsMap[$objectType].count -ne 0)
     {
-        mapRecordMap -recordsMap $recordsMap -fieldName 'accountName' -objectType 'Account' -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList
+        mapRecordMapToId -recordsMap $recordsMap -fieldName $fieldName -objectType $objectType -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList
     }else
     {
         $recordListFieldNameAndType = addUniqueRecordsToList -recordsMap $recordsMap
 
         if($recordListFieldNameAndType -ne $null){
-            mapRecordMap -recordsMap $recordListFieldNameAndType['records'] -objectType $recordListFieldNameAndType['type'] -fieldName $recordListFieldNameAndType['nameField'] -recordLookupMaps $recordLookupMaps -mappedLis $mappedList -noMappingList $noMappingList
-
-            $recordListFieldNameAndType['records'] | ForEach-Object -Process ({ 
-                mapObject -object $_ -objectName $_[$recordListFieldNameAndType['nameField']] -objectNameMap $recordLookupMaps[$recordListFieldNameAndType['type']] -mappedList $mappedList -noMappingList $noMappingList
-                })
+            mapObjectListToId -recordList $recordListFieldNameAndType['records'] -objectType $recordListFieldNameAndType['type'] -fieldName $recordListFieldNameAndType['fieldName'] -recordLookupMaps $recordLookupMaps -mappedLis $mappedList -noMappingList $noMappingList
         }
         else{
-            $recordsMap.Paths | ForEach-Object -Process ({
-                $null=$canNotMap.add(@{'Class'=$recordsMap['Class']; 'Path'=$_.fullPath}); 
-            })
+            addToCannotMap -recordsMap $recordsMap -canNotMap $canNotMap
         }
     }
 }
 
-Function mapObject
+Function addToCannotMap
+{
+    param($recordsMap, $canNotMap)
+    $recordsMap.Paths | ForEach-Object -Process ({
+        $null=$canNotMap.add(@{'status'=$recordsMap['status'];'Class'=$recordsMap['Class']; 'Path'=$_.fullPath}); 
+    })
+}
+
+Function mapObjectToId
 {
     param($object, $objectName, $objectNameMap, $mappedList, $noMappingList)
 
+    try{
     if($objectName -ne '' -and $objectName -ne $null -and $objectNameMap.ContainsKey($objectName))
     {
         #$accountName = $matches[0];
         $objectId = $objectNameMap[$objectName];
-        $object.add('FirstPublishLocationId', $objectId);
+        $null = $object.add('FirstPublishLocationId', $objectId);
         $null = $mappedList.add($object);
     }else
     {
         $null = $noMappingList.add($object);
         
+    }}
+    catch{
+        Write-Host 'Fail'
     }
     return;
 }
 
-Function mapRecordMap
+Function mapObjectListToId
+{
+    param($recordList, $objectType, $fieldName, $recordLookupMaps, $mappedList, $noMappingList)
+
+    $recordList | ForEach-Object -Process ({
+            mapObjectToId -object $_ -objectName $_[$fieldName] -objectNameMap $recordLookupMaps[$objectType] -mappedList $mappedList -noMappingList $noMappingList
+        })
+}
+Function mapRecordMapToId
 {
     param($recordsMap, $objectType, $fieldName, $recordLookupMaps, $mappedList, $noMappingList)
-    $recordsMap[$objectType] | ForEach-Object -Process ({
-            mapObject -object $_ -objectName $_[$fieldName] -objectNameMap $recordLookupMaps[$objectType] -mappedList $mappedList -noMappingList $noMappingList
-        })
+    mapObjectListToId -recordList $recordsMap[$objectType] -objectType $objectType -fieldName $fieldName -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList
 }
 
 Function getAccountNameFromMeta
@@ -325,148 +366,54 @@ $classToTypeMappingTable = @{  'Account Agreement'           ='Legacy Document';
 
     if($mappingObject -eq 'Account')
     {
-
-        mapAccount -recordsMap $recordsMap -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList -canNotMapList $canNotMap
-
-        <#if($recordsMap['Account'].count -ne 0)
-        {
-            $recordsMap['Account'] | ForEach-Object -Process ({
-                mapObject -object $_ -objectName $_.accountName -objectNameMap $accountMap -mappedList $mappedList -noMappingList $noMappingList
-            })
-        }else
-        {
-            $recordListFieldNameAndType = addUniqueRecordsToList -recordsMap $recordsMap
-
-            if($recordListFieldNameAndType -ne $null){
-                $recordListFieldNameAndType['records'] | ForEach-Object -Process ({ 
-                    mapObject -object $_ -objectName $_[$recordListFieldNameAndType['nameField']] -objectNameMap $recordLookupMaps[$recordListFieldNameAndType['type']] -mappedList $mappedList -noMappingList $noMappingList
-                    })
-            }
-            else{
-                $recordsMap.Paths | ForEach-Object -Process ({
-                    $null=$canNotMap.add(@{'Class'=$recordsMap['Class']; 'Path'=$_.fullPath}); 
-                })
-            }
-        }#>
-        
-        #mapObject -object $_ -objectName $_.accountName -objectNameMap $accountMap -mappedList $mappedList -noMappingList $noMappingList
-        #return;
+        mapAccountToId -recordsMap $recordsMap -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList -canNotMap $canNotMap
     }
 
     if($mappingObject -eq 'Transaction')
     {
-        if($recordsMap['Transaction'].count -ne 0)
-        {
-            $recordsMap['Transaction'] | ForEach-Object -Process ({
-                mapObject -object $_ -objectName $_.transName -objectNameMap $transactionMap -mappedList $mappedList -noMappingList $noMappingList
-            })
-        }else
-        {
 
-            if($recordsMap['Class'] -eq 'Distrubtion Request IN-KIND')
-            {
-                Write-Host 'test'
-            }
-            $recordListFieldNameAndType = addUniqueRecordsToList -recordsMap $recordsMap
+        mapTransactionToId -recordsMap $recordsMap -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList -canNotMap $canNotMap
 
-            if($recordListFieldNameAndType -ne $null){
-                $recordListFieldNameAndType['records'] | ForEach-Object -Process ({ 
-                    mapObject -object $_ -objectName $_[$recordListFieldNameAndType['nameField']] -objectNameMap $recordLookupMaps[$recordListFieldNameAndType['type']] -mappedList $mappedList -noMappingList $noMappingList
-                    })
-            }
-            else{
-                $recordsMap.Paths | ForEach-Object -Process ({
-                    $null=$canNotMap.add(@{'Class'=$recordsMap['Class']; 'Path'=$_.fullPath}); 
-                })
-            }
-        }
-        
-        #mapObject -object $_ -objectName $_.accountName -objectNameMap $accountMap -mappedList $mappedList -noMappingList $noMappingList
-        #return;
+  
     }
 
     if($mappingObject -eq 'CUSIP')
     {
-        if($recordsMap['CUSIP'].count -ne 0)
-        {
-            $recordsMap['CUSIP'] | ForEach-Object -Process ({
-                mapObject -object $_ -objectName $_.assetName -objectNameMap $assetMap -mappedList $mappedList -noMappingList $noMappingList
-            })
-        }else
-        {
-            $recordListFieldNameAndType = addUniqueRecordsToList -recordsMap $recordsMap
-
-            if($recordListFieldNameAndType -ne $null){
-                $recordListFieldNameAndType['records'] | ForEach-Object -Process ({ 
-                    mapObject -object $_ -objectName $_[$recordListFieldNameAndType['nameField']] -objectNameMap $recordLookupMaps[$recordListFieldNameAndType['type']] -mappedList $mappedList -noMappingList $noMappingList
-                    })
-            }
-            else{
-                $recordsMap.Paths | ForEach-Object -Process ({
-                    $null=$canNotMap.add(@{'Class'=$recordsMap['Class']; 'Path'=$_.fullPath}); 
-                })
-            }
-        }
-        
-        #mapObject -object $_ -objectName $_.accountName -objectNameMap $accountMap -mappedList $mappedList -noMappingList $noMappingList
-        #return;
+        mapAssettToId -recordsMap $recordsMap -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList -canNotMap $canNotMap
     }
 
     if($mappingObject -eq 'RE Transaciton')
     {
-        if($recordsMap['RE Transaciton'].count -ne 0)
-        {
-            $recordsMap['RE Transaciton'] | ForEach-Object -Process ({
-                mapObject -object $_ -objectName $_.reTransName -objectNameMap $reTransMap -mappedList $mappedList -noMappingList $noMappingList
-            })
-        }else
-        {
-            $recordListFieldNameAndType = addUniqueRecordsToList -recordsMap $recordsMap
-
-            if($recordListFieldNameAndType -ne $null){
-                $recordListFieldNameAndType['records'] | ForEach-Object -Process ({ 
-                    mapObject -object $_ -objectName $_[$recordListFieldNameAndType['nameField']] -objectNameMap $recordLookupMaps[$recordListFieldNameAndType['type']] -mappedList $mappedList -noMappingList $noMappingList
-                    })
-            }
-            else{
-                $recordsMap.Paths | ForEach-Object -Process ({
-                    $null=$canNotMap.add(@{'Class'=$recordsMap['Class']; 'Path'=$_.fullPath}); 
-                })
-            }
-        }
-        
-        #mapObject -object $_ -objectName $_.accountName -objectNameMap $accountMap -mappedList $mappedList -noMappingList $noMappingList
-        #return;
+        mapRETransactionToId  -recordsMap $recordsMap -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList -canNotMap $canNotMap
     }
 
     if($mappingObject -eq 'Other')
     {
+        $mappingCount = $($recordsMap['Account'].count) + $($recordsMap['RE Transaciton'].count) + $($recordsMap['Transaction'].count) + $($recordsMap['CUSIP'].count) 
+
         if($recordsMap['Account'].count -ne 0)
         {
-            $recordsMap['Account'] | ForEach-Object -Process ({
-                mapObject -object $_ -objectName $_.accountName -objectNameMap $accountMap -mappedList $mappedList -noMappingList $noMappingList
-            })
+            mapRecordMapToId -recordsMap $recordsMap -objectType 'Account' -fieldName 'accountName' -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList
         }
 
         if($recordsMap['RE Transaciton'].count -ne 0)
         {
-            $recordsMap['RE Transaciton'] | ForEach-Object -Process ({
-                mapObject -object $_ -objectName $_.reTransName -objectNameMap $reTransMap -mappedList $mappedList -noMappingList $noMappingList
-            })
+            mapRecordMapToId -recordsMap $recordsMap -objectType 'RE Transaciton' -fieldName 'reTransName' -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList
         }
 
         if($recordsMap['Transaction'].count -ne 0)
         {
-            $recordsMap['Transaction'] | ForEach-Object -Process ({
-                mapObject -object $_ -objectName $_.transName -objectNameMap $transactionMap -mappedList $mappedList -noMappingList $noMappingList
-            })
+            mapRecordMapToId -recordsMap $recordsMap -objectType 'Transaction' -fieldName 'transName' -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList
         }
 
         if($recordsMap['CUSIP'].count -ne 0)
         {
-            $recordsMap['CUSIP'] | ForEach-Object -Process ({
-                mapObject -object $_ -objectName $_.assetName -objectNameMap $assetMap -mappedList $mappedList -noMappingList $noMappingList
-            })
+            mapRecordMapToId -recordsMap $recordsMap -objectType 'CUSIP' -fieldName 'assetName' -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList
+        }
+
+        if($mappingCount -eq 0)
+        {
+            addToCannotMap -recordsMap $recordsMap -canNotMap $canNotMap
         }
         #mapObject -object $_ -objectNameMap 
         #return;
@@ -479,16 +426,12 @@ $classToTypeMappingTable = @{  'Account Agreement'           ='Legacy Document';
 
     if($mappingOjbect -eq 'Drive')
     {
-        $deleteList = $(addUniqueRecordsToList -recordsMap $recordsMap)['records'];
+        $driveList = $(addUniqueRecordsToList -recordsMap $recordsMap)['records'];
     }
 
     if($mappingObject -eq '' -or $mappingObject -eq $null)
     {
-
-        $recordsMap.Paths | ForEach-Object -Process ({
-            $null = $canNotMap.add(@{'Class'=$recordsMap['Class']; 'Path'=$_.fullPath}); 
-        })
-        
+        addToCannotMap -recordsMap $recordsMap -canNotMap $canNotMap   
     }
 
     $null = $recordMapOfLists.add('mappedRecords', $mappedList);
@@ -551,6 +494,9 @@ Function parseMFileObject{
     $indexOfDateComplete = $mfileObjectVersion.properties.property.name.IndexOf('Date Completed');
     $dateComplete = $mfileObjectVersion.properties.property[$indexOfDateComplete].'#text';
 
+    $indexOfStatus = $mfileObjectVersion.properties.property.name.IndexOf('Status');
+    $status = $mfileObjectVersion.properties.property[$indexOfStatus].'#text';
+
     [System.Collections.ArrayList] $transactionList = @();
     $transactionNameIndex = $mfileObjectVersion.properties.property.name.IndexOf('Transaction');
     if($transactionNameIndex -ne -1)
@@ -587,6 +533,7 @@ Function parseMFileObject{
     $recordsMap.add('Account', [System.Collections.ArrayList] @());
     $recordsMap.add('CUSIP', [System.Collections.ArrayList] @());
     $recordsMap.add('Paths', [System.Collections.ArrayList] @());
+    $recordsMap.add('Status', $status);
 
     $docfiles = @($mfileObjectVersion.docfiles.docfile);
     $noDocFile = 0;
@@ -726,7 +673,7 @@ Function generateUploadCsvForContentVer
             $noDocs += $recordsMap['nullDoc'];
             
             $recordMapOfLists = mapFirstPublisherLocationAndNameFile -recordsMap $recordsMap -accountMap $accountsNameToIdMap -transactionMap $transactionsNameToIdMap -reTransMap $reTransactionsNameToIdMap -assetMap $assetNameToIdMap
-
+            
             #Write-Host $recordMapOfLists['mappedRecords'].Class;
             try{
             $recordMapOfLists['mappedRecords'] | ForEach-Object -Process ({
