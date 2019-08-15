@@ -21,32 +21,33 @@ Function addUniqueRecordsToList {
     {
         return @{'records'=$recordsMap['Account']; 'fieldName'='accountName'; 'type'='Account'}
     }
+    # 'accountName'=$accountName; 'transName'=$transName; 'reTransName'=$reTransName;
     return $null;
 }
 
 Function mapAccountToId
 {
-    param($recordType, $recordsMap, $recordLookupMaps, $mappedList, $noMappingList, $canNotMap)
-    mapObjectMapToId -recordType $recordType -objectType 'Account' -fieldName 'accountName' -recordsMap $recordsMap -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList -canNotMap $canNotMap
+    param($recordType, $type, $recordsMap, $recordLookupMaps, $mappedList, $noMappingList, $canNotMap)
+    mapObjectMapToId -recordType $recordType -objectType 'Account' -fieldName 'accountName' -recordsMap $recordsMap -type $type -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList -canNotMap $canNotMap
 }
 
 Function mapAssettToId
 {
-    param($recordType, $recordsMap, $recordLookupMaps, $mappedList, $noMappingList, $canNotMap)
-    mapObjectMapToId -recordType $recordType -objectType 'CUSIP' -fieldName 'assetName' -recordsMap $recordsMap -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList -canNotMap $canNotMap
+    param($recordType, $type, $recordsMap, $recordLookupMaps, $mappedList, $noMappingList, $canNotMap)
+    mapObjectMapToId -recordType $recordType -objectType 'CUSIP' -fieldName 'assetName' -recordsMap $recordsMap -type $type -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList -canNotMap $canNotMap
 }
 
 Function mapRETransactionToId
 {
-    param($recordType, $recordsMap, $recordLookupMaps, $mappedList, $noMappingList, $canNotMap)
-    mapObjectMapToId -recordType $recordType -objectType 'RE Transaction' -fieldName 'reTransName' -recordsMap $recordsMap -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList -canNotMap $canNotMap
+    param($recordType, $type, $recordsMap, $recordLookupMaps, $mappedList, $noMappingList, $canNotMap)
+    mapObjectMapToId -recordType $recordType -objectType 'RE Transaction' -fieldName 'reTransName' -recordsMap $recordsMap -type $type -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList -canNotMap $canNotMap
 }
 
 Function mapTransactionToId
 {
-    param($recordType, $recordsMap, $recordLookupMaps, $mappedList, $noMappingList, $canNotMap)
+    param($recordType, $type, $recordsMap, $recordLookupMaps, $mappedList, $noMappingList, $canNotMap)
     try{
-        mapObjectMapToId -recordType $recordType -objectType 'Transaction' -fieldName 'transName' -recordsMap $recordsMap -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList -canNotMap $canNotMap
+        mapObjectMapToId -recordType $recordType -objectType 'Transaction' -fieldName 'transName' -recordsMap $recordsMap  -type $type -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList -canNotMap $canNotMap
         }catch
         {
             write-host 'thing'
@@ -55,67 +56,119 @@ Function mapTransactionToId
 
 Function mapObjectMapToId
 {
-    param($recordType, $objectType, $fieldName, $recordsMap, $recordLookupMaps, $mappedList, $noMappingList, $canNotMap)
+    param($recordType, $type, $objectType, $fieldName, $recordsMap, $recordLookupMaps, $mappedList, $noMappingList, $canNotMap)
 
     if($recordsMap[$objectType].count -ne 0)
     {
-        mapRecordMapToId -recordsMap $recordsMap -fieldName $fieldName -objectType $objectType -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList
+        mapRecordMapToId -recordsMap $recordsMap -type $type -fieldName $fieldName -assignedTo $recordsMap['AssignToName'] -dateComplete $recordsMap['dateComplete'] -status $recordsMap['status'] -state $recordsMap['state'] -objectType $objectType -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList
     }else
     {
         $recordListFieldNameAndType = addUniqueRecordsToList -recordsMap $recordsMap
 
         if($recordListFieldNameAndType -ne $null){
-            mapObjectListToId -recordList $recordListFieldNameAndType['records'] -objectType $recordListFieldNameAndType['type'] -fieldName $recordListFieldNameAndType['fieldName'] -recordLookupMaps $recordLookupMaps -mappedLis $mappedList -noMappingList $noMappingList
+            mapObjectListToId -recordList $recordListFieldNameAndType['records'] -objectType $recordListFieldNameAndType['type'] -type $type -fieldName $recordListFieldNameAndType['fieldName'] -assignedTo $recordsMap['AssignToName'] -dateComplete $recordsMap['dateComplete'] -status $recordsMap['status'] -state $recordsMap['state'] -recordLookupMaps $recordLookupMaps -mappedLis $mappedList -noMappingList $noMappingList
         }
         else{
-            addToCannotMap -recordsMap $recordsMap -canNotMap $canNotMap
+            addToCannotMap -recordsMap $recordsMap -canNotMap $canNotMap -type $type
         }
     }
 }
 
 Function addToCannotMap
 {
-    param($recordsMap, $canNotMap)
+    param($recordsMap, $canNotMap, $type)
     $recordsMap.Paths | ForEach-Object -Process ({
-        $null=$canNotMap.add(@{'status'=$recordsMap['status'];'Class'=$recordsMap['Class']; 'Path'=$_.fullPath}); 
+        $object = @{};
+        $null = $object.add('Class', $recordsMap['Class']);
+        $null = $object.add('Status', $recordsMap['Status']);
+        $null = $object.add('AssignToName', $recordsMap['AssignToName']);
+        $null = $object.add('Type', $type);
+        $null = $object.add('Path',$_.fullPath);
+        $null = $object.add('dateComplete', $recordsMap['dateComplete']);
+        $null=$canNotMap.add($object); 
     })
+}
+
+Function mapRecordMapToId
+{
+    param($recordsMap, $type, $objectType, $fieldName, $assignedTo, $dateComplete, $status, $state, $recordLookupMaps, $mappedList, $noMappingList)
+    mapObjectListToId -recordList $recordsMap[$objectType] -objectType $objectType -type $type -fieldName $fieldName -assignedTo $assignedTo -dateComplete $dateComplete -status $status -state $state -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList
+}
+
+Function mapObjectListToId
+{
+    param($recordList, $objectType, $type, $assignedTo, $dateComplete, $status, $state, $fieldName, $recordLookupMaps, $mappedList, $noMappingList)
+
+    $recordList | ForEach-Object -Process ({
+
+            if($_[$fieldName] -eq '' -or $_[$fieldName] -eq $null)
+            {
+                #Write-Host $_.values
+                $callstack = get-pscallstack
+                Write-Host '*~~~~*'
+                Write-Host $callstack
+                Write-Host '~~~~'
+                write-host $recordList.keys;
+                Write-Host '~~~~'
+                write-host $recordList.values;
+                Write-Host '~~~~'
+                write-host $fieldName;
+                Write-Host '*~~~~*'
+            }
+            $team = '';
+            $userId = '';
+            if($($assignedTo -match 'Sales Team') -or $($assignedTo -match 'Processors') -or $($assignedTo -match 'Secure Uploads'))
+            {
+                $team = $assignedTo;
+            }else
+            {
+                if($assignedTo -ne $null)
+                {
+                    $userId = $recordLookupMaps['User'][$assignedTo];
+                    if($userId -eq '')
+                    {
+                        write-host($assignedTo);
+                    }
+                }
+            }
+
+            mapObjectToId -object $_ -type $type -objectName $_[$fieldName] -team $team -userId $userId -dateComplete $dateComplete -status $status -state $state -objectNameMap $recordLookupMaps[$objectType] -mappedList $mappedList -noMappingList $noMappingList
+        })
 }
 
 Function mapObjectToId
 {
-    param($object, $objectName, $objectNameMap, $mappedList, $noMappingList)
-
-    try{
+    param($object, $type, $objectName, $team, $userId, $dateComplete, $status, $state, $objectNameMap, $mappedList, $noMappingList)
+    
+    $null = $object.add('Type', $type);
+    $null = $object.add('Status', $status);
+    $null = $object.add('State', $state);
+    $null = $object.add('AssignedToUserId', $userId);
+    $null = $object.add('Team', $team);
+    #$null = $object.add('dateComplete', $dateComplete)
+   
     if($objectName -ne '' -and $objectName -ne $null -and $objectNameMap.ContainsKey($objectName))
     {
         #$accountName = $matches[0];
         $objectId = $objectNameMap[$objectName];
         $null = $object.add('FirstPublishLocationId', $objectId);
+        #$null = $object.add('Type', $type);
+        #$null = $object.add('Status', $status);
+        #$null = $object.add('State', $state);
+        #$null = $object.add('AssignedToUserId', $userId);
+        #$null = $object.add('Team', $team);
         $null = $mappedList.add($object);
+       
     }else
     {
-        $null = $noMappingList.add($object);
         
-    }}
-    catch{
-        Write-Host 'Fail'
+        $null = $noMappingList.add($object);   
     }
+     
     return;
 }
 
-Function mapObjectListToId
-{
-    param($recordList, $objectType, $fieldName, $recordLookupMaps, $mappedList, $noMappingList)
 
-    $recordList | ForEach-Object -Process ({
-            mapObjectToId -object $_ -objectName $_[$fieldName] -objectNameMap $recordLookupMaps[$objectType] -mappedList $mappedList -noMappingList $noMappingList
-        })
-}
-Function mapRecordMapToId
-{
-    param($recordsMap, $objectType, $fieldName, $recordLookupMaps, $mappedList, $noMappingList)
-    mapObjectListToId -recordList $recordsMap[$objectType] -objectType $objectType -fieldName $fieldName -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList
-}
 
 Function getAccountNameFromMeta
 {
@@ -124,16 +177,60 @@ Function getAccountNameFromMeta
     #[System.Collections.ArrayList] $propertyList = @();
     #Write-Host $mfileObjectVersion.properties;
     $propertyNameString = $mfileObjectVersion.properties.property[$index].'#text';
-    if(-not $($propertyNameString -match '\d{7}'))
+
+
+    if($propertyNameString -eq $null -or $propertyNameString -eq '')
     {
         return;
     }
-    #Write-Host $propertyNameString;
-    #$propertyNameStringSplit = $propertyNameString.split(';');
-    $matches.Values | ForEach-Object -Process ({ $null=$arrayList.add($_);
+
+    $propertyNameString.split(';') | ForEach-Object -Process ({
+        if($_ -match '\d{7}')
+        {
+            $arrayList.add($matches[0]);
+        }
     })
+    return;
+    #
+    #if(-not $($propertyNameString -match '\d{7}'))
+    #{
+    #    return;
+    #}
+    ##Write-Host $propertyNameString;
+    ##$propertyNameStringSplit = $propertyNameString.split(';');
+    #$matches.Values | ForEach-Object -Process ({ $null=$arrayList.add($_);
+    #})
+    #
+    
     #return [System.Collections.ArrayList] $arrayList;
 }
+
+Function getNamesFromMetaRegex
+{
+    param($index, $mfileObjectVersion, $arrayList, $regex)
+
+    #[System.Collections.ArrayList] $propertyList = @();
+    #Write-Host $mfileObjectVersion.properties;
+    $propertyNameString = $mfileObjectVersion.properties.property[$index].'#text';
+
+    
+    if($propertyNameString -eq $null -or $propertyNameString -eq '')
+    {
+        return;
+    }
+
+    $propertyNameString.split(';') | ForEach-Object -Process ({
+        if($_ -cmatch $regex)
+        {
+            #Write-Host $matches[0]
+            $null = $arrayList.add($matches[0]);
+        }
+    })
+    return;
+}
+
+
+
 
 Function getNamesFromMeta
 {
@@ -184,7 +281,7 @@ Function generateRecordAddRelatedObject
 
 Function mapFirstPublisherLocationAndNameFile
 {
-    param($recordsMap, $classMappingCSV, $accountMap, $transactionMap, $assetMap, $reTransMap)
+    param($recordsMap, $usersMap, $accountMap, $transactionMap, $assetMap, $reTransMap)
     $recordMapOfLists = @{};
     [System.Collections.ArrayList] $noMappingList = @();
     [System.Collections.ArrayList] $mappedList = @();
@@ -195,7 +292,8 @@ Function mapFirstPublisherLocationAndNameFile
     $recordLookupMaps = @{  'Account'=$accountMap;
                             'Transaction'=$transactionMap;
                             'CUSIP'=$assetMap;
-                            'RE Transaction'=$reTransMap;};
+                            'RE Transaction'=$reTransMap;
+                            'User'=$usersMap;};
 
     $classToMappingTable = @{  'Account Agreement'           ='Account';
                                'Application'                 ='Account';
@@ -242,9 +340,9 @@ Function mapFirstPublisherLocationAndNameFile
                                'Closed Account Approval Form'='Delete';
                                'Daily Checklist'             ='Delete';
                                'Signed Checks'               ='Delete';
-                               'Deposit Recurring'           ='RE Transaciton';
-                               'Distribution Recurring'      ='RE Transaciton';
-                               'Payment Auth Recurring'      ='RE Transaciton';
+                               'Deposit Recurring'           ='RE Transaction';
+                               'Distribution Recurring'      ='RE Transaction';
+                               'Payment Auth Recurring'      ='RE Transaction';
                                'Tax Correction'              ='Other';
                                'Other document'              ='Other';
                                'Document'                    ='Other';
@@ -367,49 +465,49 @@ $classToTypeMappingTable = @{  'Account Agreement'           ='Legacy Document';
 
     if($mappingObject -eq 'Account')
     {
-        mapAccountToId -recordsMap $recordsMap -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList -canNotMap $canNotMap
+        mapAccountToId -recordsMap $recordsMap -type $type -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList -canNotMap $canNotMap
     }
 
     if($mappingObject -eq 'Transaction')
     {
 
-        mapTransactionToId -recordsMap $recordsMap -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList -canNotMap $canNotMap
+        mapTransactionToId -recordsMap $recordsMap -type $type -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList -canNotMap $canNotMap
 
   
     }
 
     if($mappingObject -eq 'CUSIP')
     {
-        mapAssettToId -recordsMap $recordsMap -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList -canNotMap $canNotMap
+        mapAssettToId -recordsMap $recordsMap -type $type -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList -canNotMap $canNotMap
     }
 
-    if($mappingObject -eq 'RE Transaciton')
+    if($mappingObject -eq 'RE Transaction')
     {
-        mapRETransactionToId  -recordsMap $recordsMap -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList -canNotMap $canNotMap
+        mapRETransactionToId  -recordsMap $recordsMap -type $type -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList -canNotMap $canNotMap
     }
 
     if($mappingObject -eq 'Other')
     {
-        $mappingCount = $($recordsMap['Account'].count) + $($recordsMap['RE Transaciton'].count) + $($recordsMap['Transaction'].count) + $($recordsMap['CUSIP'].count) 
+        $mappingCount = $($recordsMap['Account'].count) + $($recordsMap['RE Transaction'].count) + $($recordsMap['Transaction'].count) + $($recordsMap['CUSIP'].count) 
 
         if($recordsMap['Account'].count -ne 0)
         {
-            mapRecordMapToId -recordsMap $recordsMap -objectType 'Account' -fieldName 'accountName' -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList
+            mapRecordMapToId -recordsMap $recordsMap -type $type -objectType 'Account' -fieldName 'accountName' -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList
         }
 
-        if($recordsMap['RE Transaciton'].count -ne 0)
+        if($recordsMap['RE Transaction'].count -ne 0)
         {
-            mapRecordMapToId -recordsMap $recordsMap -objectType 'RE Transaciton' -fieldName 'reTransName' -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList
+            mapRecordMapToId -recordsMap $recordsMap -type $type -objectType 'RE Transaction' -fieldName 'reTransName' -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList
         }
 
         if($recordsMap['Transaction'].count -ne 0)
         {
-            mapRecordMapToId -recordsMap $recordsMap -objectType 'Transaction' -fieldName 'transName' -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList
+            mapRecordMapToId -recordsMap $recordsMap -type $type -objectType 'Transaction' -fieldName 'transName' -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList
         }
 
         if($recordsMap['CUSIP'].count -ne 0)
         {
-            mapRecordMapToId -recordsMap $recordsMap -objectType 'CUSIP' -fieldName 'assetName' -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList
+            mapRecordMapToId -recordsMap $recordsMap -type $type -objectType 'CUSIP' -fieldName 'assetName' -recordLookupMaps $recordLookupMaps -mappedList $mappedList -noMappingList $noMappingList
         }
 
         if($mappingCount -eq 0)
@@ -498,18 +596,27 @@ Function parseMFileObject{
     $indexOfStatus = $mfileObjectVersion.properties.property.name.IndexOf('Status');
     $status = $mfileObjectVersion.properties.property[$indexOfStatus].'#text';
 
+    
+
+    $indexOfState = $mfileObjectVersion.properties.property.name.IndexOf('State');
+    $state = $mfileObjectVersion.properties.property[$indexOfState].'#text';
+
+    $indexOfAssignedTo = $mfileObjectVersion.properties.property.name.IndexOf('Assigned to');
+    $assignedTo = $mfileObjectVersion.properties.property[$indexOfAssignedTo].'#text';
+
+
     [System.Collections.ArrayList] $transactionList = @();
     $transactionNameIndex = $mfileObjectVersion.properties.property.name.IndexOf('Transaction');
     if($transactionNameIndex -ne -1)
     {
-        getNamesFromMeta -index $transactionNameIndex -mfileObjectVersion $mfileObjectVersion -arrayList $transactionList
+        getNamesFromMetaRegex -index $transactionNameIndex -mfileObjectVersion $mfileObjectVersion -arrayList $transactionList -regex 'TRANS-[0-9]{6}'
     }
 
     [System.Collections.ArrayList] $accountList = @();
     $accountNameIndex  = $mfileObjectVersion.properties.property.name.IndexOf('Account Name');
     if($accountNameIndex -ne -1)
     {
-        getAccountNameFromMeta -index $accountNameIndex -mfileObjectVersion $mfileObjectVersion -arrayList $accountList;
+        getNamesFromMetaRegex -index $accountNameIndex -mfileObjectVersion $mfileObjectVersion -arrayList $accountList -regex '\d{7}';
         #Write-Host $accountList.Count
     }
 
@@ -517,24 +624,37 @@ Function parseMFileObject{
     $assetNameIndex = $mfileObjectVersion.properties.property.name.IndexOf('Asset'); 
     if($assetNameIndex -ne -1)
     {
-        getNamesFromMeta -index $assetNameIndex -mfileObjectVersion $mfileObjectVersion -arrayList $assetList
+        getNamesFromMetaRegex -index $assetNameIndex -mfileObjectVersion $mfileObjectVersion -arrayList $assetList -regex '[A-Z0-9]{9}'
     }
 
     [System.Collections.ArrayList] $reTransList = @();
     $reTransNameIndex = $mfileObjectVersion.properties.property.name.IndexOf('Recurring Transaction'); 
     if($reTransNameIndex -ne -1)
     {
-        getNamesFromMeta -index $reTransNameIndex -mfileObjectVersion $mfileObjectVersion -arrayList $reTransList
+        getNamesFromMetaRegex -index $reTransNameIndex -mfileObjectVersion $mfileObjectVersion -arrayList $reTransList -regex 'R-\d{4}'
+    }
+
+    if($state -eq 'Active' -or $state -eq 'Posted' -or $state -eq 'Complete')
+    {
+        $status = 'Complete';
+    }
+
+    if($status -eq '')
+    {
+        $status = 'No Status'
     }
 
     [Hashtable]$recordsMap = @{};
     $recordsMap.add('Class', $className);
     $recordsMap.add('Transaction', [System.Collections.ArrayList] @());
-    $recordsMap.add('RE Transaciton', [System.Collections.ArrayList] @());
+    $recordsMap.add('RE Transaction', [System.Collections.ArrayList] @());
     $recordsMap.add('Account', [System.Collections.ArrayList] @());
     $recordsMap.add('CUSIP', [System.Collections.ArrayList] @());
     $recordsMap.add('Paths', [System.Collections.ArrayList] @());
     $recordsMap.add('Status', $status);
+    $recordsMap.add('State', $state);
+    $recordsMap.add('AssignToName', $assignedTo);
+    $recordsMap.add('dateComplete', $dateComplete);
 
     $docfiles = @($mfileObjectVersion.docfiles.docfile);
     $noDocFile = 0;
@@ -555,14 +675,14 @@ Function parseMFileObject{
 
         if($accountList.count -ne 0){ 
             $accountList | ForEach-Object -Process ({
-                $record = generateRecordAddRelatedObject -accountName $_ -className $className -pathFromRoot $pathFromRoot.fullPath -size $size -dateComplete $dateComplete
+                $record = generateRecordAddRelatedObject -accountName $_ -fileName $pathFromRoot.fileName -className $className -pathFromRoot $pathFromRoot.fullPath -size $size -dateComplete $dateComplete
                 $null = $recordsMap['Account'].add($record);
             })
         }
 
         if($transactionList.count -ne 0){
             $transactionList | ForEach-Object -Process ({
-                    $record = generateRecordAddRelatedObject -transName $_ -className $className -pathFromRoot $pathFromRoot.fullPath -size $size -dateComplete $dateComplete
+                    $record = generateRecordAddRelatedObject -transName $_ -fileName $pathFromRoot.fileName -className $className -pathFromRoot $pathFromRoot.fullPath -size $size -dateComplete $dateComplete
                     $null = $recordsMap['Transaction'].add($record);
                 })
         
@@ -570,7 +690,7 @@ Function parseMFileObject{
         
         if($assetList.count -ne 0){
             $assetList | ForEach-Object -Process ({
-                    $record = generateRecordAddRelatedObject -assetName $_ -className $className -pathFromRoot $pathFromRoot.fullPath -size $size -dateComplete $dateComplete
+                    $record = generateRecordAddRelatedObject -assetName $_ -fileName $pathFromRoot.fileName -className $className -pathFromRoot $pathFromRoot.fullPath -size $size -dateComplete $dateComplete
                     $null = $recordsMap['CUSIP'].add($record);
                 })
         
@@ -578,11 +698,12 @@ Function parseMFileObject{
 
         if($reTransList.count -ne 0){
             $reTransList | ForEach-Object -Process ({
-                    $record = generateRecordAddRelatedObject -reTransName $_ -className $className -pathFromRoot $pathFromRoot.fullPath -size $size -dateComplete $dateComplete
-                    $null = $recordsMap['RE Transaciton'].add($record);
+                    $record = generateRecordAddRelatedObject -reTransName $_ -fileName $pathFromRoot.fileName -className $className -pathFromRoot $pathFromRoot.fullPath -size $size -dateComplete $dateComplete
+                    $null = $recordsMap['RE Transaction'].add($record);
                 })
         }
-
+        # return @{'fileName'=$fileName; 'fullPath'=$pathFromRoot};
+        #$fileName = "$dateComplete-$($pathFromBaseSplit[$pathFromBaseSplit.count - 1].split('.')[0])";
         <#$pathFromBase = $mfileObjectVersion.docfiles.docfile.pathfrombase;
         $pathFromBaseSplit = $pathFromBase.split('\');
         $pathFromBaseSliced = $pathFromBaseSplit[2..$($pathFromBaseSplit.count - 1)];
@@ -601,8 +722,10 @@ Function parseMFileObject{
 Function generateCsvJob
 {
     [CmdletBinding()]
+    
 
-    param ([Parameter(ValueFromPipeline)] $Input)
+    param ([Parameter(ValueFromPipeline)] $someVar)
+
     #Write-Host $Input.doc;
     [System.Collections.ArrayList] $recordsCsv = @();
     [System.Collections.ArrayList] $recordsCsvToBig = @();
@@ -611,15 +734,16 @@ Function generateCsvJob
     [System.Collections.ArrayList] $deleteCSV = @();
     [System.Collections.ArrayList] $unMappable = @();
     #@{'doc'=$_; 'accountsNameToIdMap'=$accountsNameToIdMap; 'assetNameToIdMap'=$assetNameToIdMap; 'transactionsNameToIdMap'=$transactionsNameToIdMap; 'reTransactionsNameToIdMap'=$reTransactionsNameToIdMap; 'fileRoot'=$fileRoot; 'vaultFolderCSVPath'=$vaultFolderCSVPath};
-    $accountsNameToIdMap = $Input.accountsNameToIdMap;
-    $assetNameToIdMap = $Input.assetNameToIdMap;
-    $transactionsNameToIdMap = $Input.transactionsNameToIdMap;
-    $reTransactionsNameToIdMap = $Input.reTransactionsNameToIdMap;
-    $fileRoot=$Input.fileRoot;
-    $vaultFolderCSVPath=$Input.vaultFolderCSVPath;
-    $vaultFolderCSV=$Input.vaultFolderCSV;
+    $userNameToIdMap = $someVar.userNameToIdMap;
+    $accountsNameToIdMap = $someVar.accountsNameToIdMap;
+    $assetNameToIdMap = $someVar.assetNameToIdMap;
+    $transactionsNameToIdMap = $someVar.transactionsNameToIdMap;
+    $reTransactionsNameToIdMap = $someVar.reTransactionsNameToIdMap;
+    $fileRoot=$someVar.fileRoot;
+    $vaultFolderCSVPath=$someVar.vaultFolderCSVPath;
+    $vaultFolderCSV=$someVar.vaultFolderCSV;
 
-    [xml]$currentContentDocument = Get-Content $Input.doc;
+    [xml]$currentContentDocument = Get-Content $someVar.doc;
     #echo $currentContentDocument.content.object;
     $currentContentDocument.content.object | ForEach-Object -Process ({
         
@@ -628,8 +752,10 @@ Function generateCsvJob
         $recordsMap = parseMFileObject -mfileObject $_ -folderPath $path
 
         $noDocs += $recordsMap['nullDoc'];
+       
         
-        $recordMapOfLists = mapFirstPublisherLocationAndNameFile -recordsMap $recordsMap -accountMap $accountsNameToIdMap -transactionMap $transactionsNameToIdMap -reTransMap $reTransactionsNameToIdMap -assetMap $assetNameToIdMap
+        $recordMapOfLists = mapFirstPublisherLocationAndNameFile -recordsMap $recordsMap -usersMap $userNameToIdMap -accountMap $accountsNameToIdMap -transactionMap $transactionsNameToIdMap -reTransMap $reTransactionsNameToIdMap -assetMap $assetNameToIdMap
+            
         
         #Write-Host $recordMapOfLists['mappedRecords'].Class;
         try{
@@ -684,15 +810,8 @@ Function generateCsvJob
                 })
         }
 
-        #$someNum++;
-        
-        #if($someNum % 1000 -eq 0)
-        #{
-        #    echo 'Records processed' $someNum;    
-        #    echo 'Null docs' $noDocs;
-        #}
         })
-        return @{'mapped'=$recordsCsv; 'nonMapped'=$recordsCsvNoAccount}
+        return @{'mapped'=$recordsCsv; 'toBig'=$recordsCsvToBig; 'nonMapped'=$recordsCsvNoAccount; 'unmappable'=$unMappable; 'deleteList'=$deleteCSV; 'driveList'=$googleDriveCSV}
     }
 
     #
@@ -700,12 +819,16 @@ Function generateCsvJob
 #main
 Function generateUploadCsvForContentVer
 {
-    param($metaDataDir, $fileRoot, $vaultFolderCSVPath)
+    param($fileRoot, $paralell=-1)
 
-    $accountsPath = 'C:\Users\dcurtin\Desktop\Account exports\Retirement_accounts.csv';
-    $transactionsPath = 'C:\Users\dcurtin\Desktop\Account exports\transactions.csv';
-    $reTransactionPath = 'C:\Users\dcurtin\Desktop\Account exports\reTransactions.csv';
-    $assetsPath = 'C:\Users\dcurtin\Desktop\Account exports\asset.csv';
+    $metaDataDir = "$fileRoot\Metadata";
+    $vaultFolderCSVPath = "$fileRoot\vaultfolder.csv";
+
+    $accountsPath = 'C:\Users\dcurtin\Desktop\Mapping Records Export\Retirement_accounts_v2.csv';
+    $transactionsPath = 'C:\Users\dcurtin\Desktop\Mapping Records Export\transactions_v2.csv';
+    $reTransactionPath = 'C:\Users\dcurtin\Desktop\Mapping Records Export\reTransactions_v2.csv';
+    $assetsPath = 'C:\Users\dcurtin\Desktop\Mapping Records Export\asset_v2.csv';
+    $userPath = 'C:\Users\dcurtin\Desktop\Mapping Records Export\users.csv';
 
     Write-Host 'Importing Accounts';
     $accountCsv = Import-csv -Path $accountsPath;
@@ -718,6 +841,9 @@ Function generateUploadCsvForContentVer
 
     Write-Host 'Importing Assets';
     $assetsCSV = Import-Csv -Path $assetsPath;
+
+    Write-Host 'Importing Users';
+    $usersCSV = Import-Csv -path $userPath;
 
     #~~~~~~~~~~~~~~~~~~~~~~~
     $accountsNameToIdMap = @{};
@@ -735,6 +861,10 @@ Function generateUploadCsvForContentVer
     $assetNameToIdMap = @{};
     echo 'Generating asset Map';
     $assetsCSV.ForEach({$assetNameToIdMap.add($_.Name, $_.Id)}) >$null;
+
+    $userNameToIdMap = @{};
+    echo 'Generating user Map';
+    $usersCSV.ForEach({$userNameToIdMap.add($_.Name, $_.Id)}) >$null;
     #~~~~~~~~~~~~~~~~~~~~~~~
 
     #$accountsNameToIdMap=$null;
@@ -745,13 +875,6 @@ Function generateUploadCsvForContentVer
     [System.Collections.ArrayList] $deleteCSV = @();
     [System.Collections.ArrayList] $unMappable = @();
     
-
-    
-    
-    $pathFolder1 = 'F:\M-Files Exports\Trust Archive\folder\Files';
-    $pathFolder2 = 'F:\M-Files Exports\Trust Archive\folder\Files\folder2';
-    $indexCount = 0;
-    
     $csvOfFiles = @();
     echo 'Getting all Pdfs';
 
@@ -760,53 +883,101 @@ Function generateUploadCsvForContentVer
     {
         $vaultFolderCSV = @(Import-Csv $vaultFolderCSVPath);
     }
-    $someNum = 0;
+
     $noDocs = 0;
-    $contentFiles = Get-ChildItem -Path $metaDataDir -Filter 'Content*.xml' 
+    $maxJobCount = 2;
+    [System.Collections.ArrayList] $contentFiles = Get-ChildItem -Path $metaDataDir -Filter 'Content*.xml' 
     $jobObjects = @{};
 
-    $contentFiles | ForEach-Object -Process ({
-        #Write-Host $_.FullName
-        $job = Start-Job -InitializationScript {Import-Module C:\Users\dcurtin\Desktop\GenerateCsvForContentVersion\generateUploadCsvForContentVer.ps1} -scriptBlock { $Input | generateCsvJob } -InputObject $(@{'doc'=$_.FullName; 'accountsNameToIdMap'=$accountsNameToIdMap; 'assetNameToIdMap'=$assetNameToIdMap; 'transactionsNameToIdMap'=$transactionsNameToIdMap; 'reTransactionsNameToIdMap'=$reTransactionsNameToIdMap; 'fileRoot'=$fileRoot; 'vaultFolderCSVPath'=$vaultFolderCSVPath; 'vaultFolderCSV'=$vaultFolderCSV});
-        $null = $jobObjects.add($job.Id, $job);
-    })
+    #$contentFiles | ForEach-Object -Process ({
+    #    #Write-Host $_.FullName
+    #    $job = Start-Job -InitializationScript {Import-Module C:\Users\dcurtin\Desktop\GenerateCsvForContentVersion\generateUploadCsvForContentVer.ps1} -scriptBlock { $Input | generateCsvJob } -InputObject $(@{'doc'=$_.FullName; 'accountsNameToIdMap'=$accountsNameToIdMap; 'assetNameToIdMap'=$assetNameToIdMap; 'transactionsNameToIdMap'=$transactionsNameToIdMap; 'reTransactionsNameToIdMap'=$reTransactionsNameToIdMap; 'fileRoot'=$fileRoot; 'vaultFolderCSVPath'=$vaultFolderCSVPath; 'vaultFolderCSV'=$vaultFolderCSV});
+    #    $null = $jobObjects.add($job.Id, $job);
+    #})
+
+    $completedJobsCount = 0;
+    $failedJobsCount = 0;
     
-    while($jobObjects.Count -ne 0)
+    if($paralell -gt 0)
     {
-        [System.Collections.ArrayList] $completedJobs = @();
-        [System.Collections.ArrayList]$jobKeys = @();
-        $jobKeys.AddRange($jobObjects.Keys);
-        $jobKeys | ForEach-Object -Process ({
-            $updatedJob = Get-Job -id $_;
-            if($updatedJob.State -eq 'Completed')
+        while($contentFiles.Count -gt 0 -or $jobObjects.Count -gt 0)
+        {
+            while($jobObjects.Count -lt $paralell -and $contentFiles.Count -ne 0)
             {
-                $null = $completedJobs.add($updatedJob);
-                $jobObjects.Remove($_);
+                $file = $contentFiles[0];
+                $contentFiles.removeAt(0);
+
+                $job = Start-Job -InitializationScript {Import-Module C:\Users\dcurtin\Desktop\GenerateCsvForContentVersion\generateUploadCsvForContentVer.ps1} -scriptBlock { $Input | generateCsvJob } -InputObject $(@{'doc'=$file.FullName; 'userNameToIdMap'=$userNameToIdMap; 'accountsNameToIdMap'=$accountsNameToIdMap; 'assetNameToIdMap'=$assetNameToIdMap; 'transactionsNameToIdMap'=$transactionsNameToIdMap; 'reTransactionsNameToIdMap'=$reTransactionsNameToIdMap; 'fileRoot'=$fileRoot; 'vaultFolderCSVPath'=$vaultFolderCSVPath; 'vaultFolderCSV'=$vaultFolderCSV});
+                $null = $jobObjects.add($job.Id, $job);
             }
-        })
-        if($completedJobs.Count -ne 0)
-        {
-            $completedJobs | ForEach-Object -Process ({
-                $result = Receive-Job -id $_.Id
-                $recordsCsv.AddRange($result['mapped']);
-                $recordsCsvNoAccount.AddRange($result['nonMapped']);
-                # return @{'unmapped'=$unMappable; 'delete'=$deleteCSV; 'drive'=$googleDriveCSV; 'nonMapped'=$recordsCsvNoAccount; 'mapped'=$recordsCsv}
+
+            [System.Collections.ArrayList] $completedJobs = @();
+            [System.Collections.ArrayList] $failedJobs = @();
+            [System.Collections.ArrayList]$jobKeys = @();
+            $jobKeys.AddRange($jobObjects.Keys);
+            $jobKeys | ForEach-Object -Process ({
+                $updatedJob = Get-Job -id $_;
+                if($updatedJob.State -eq 'Completed')
+                {
+                    $null = $completedJobs.add($updatedJob);
+                    $jobObjects.Remove($_);
+                    $completedJobsCount += 1;
+                }
+                if($updatedJob.State -ne 'Completed' -and $updatedJob.State -ne 'Running')
+                {
+                    Write-Host "State: $($updatedJob.State)"
+                    $null = $failedJobs.add($updatedJob);
+                    $jobObjects.Remove($_);
+                    $failedJobsCount += $failedJobs.Count;
+                }
             })
-            write-host "$($completedJobs.count) Finished"
-        }else
-        {
-            Start-Sleep -Seconds 5
-        }
+            if($completedJobs.Count -ne 0)
+            {
+                $completedJobs | ForEach-Object -Process ({
+                    $result = Receive-Job -id $_.Id
+                    $recordsCsv.AddRange($result['mapped']);
+                    $recordsCsvNoAccount.AddRange($result['nonMapped']);
+                    $recordsCsvToBig.AddRange($result['toBig']);
+                    $deleteCSV.AddRange($result['deleteList']);
+                    $unMappable.AddRange($result['unmappable']);
+                    $googleDriveCSV.AddRange($result['driveList']);
+
+                    #'mapped'=$recordsCsv; 'toBig'=$recordsCsvToBig; 'nonMapped'=$recordsCsvNoAccount; 'unmappable'=$unMappable; 'deleteList'=$deleteCSV; 'driveList'=$googleDriveCSV
+                })
+                
+                write-host "$($completedJobsCount) Finished"
+            }else
+            {
+                Start-Sleep -Seconds 1
+            }
+            
         
-    
+        }
+    }else
+    {
+        $contentFiles | ForEach-Object -Process({
+            $result = $( generateCsvJob -someVar $(@{'doc'=$_.FullName; 'userNameToIdMap'=$userNameToIdMap; 'accountsNameToIdMap'=$accountsNameToIdMap; 'assetNameToIdMap'=$assetNameToIdMap; 'transactionsNameToIdMap'=$transactionsNameToIdMap; 'reTransactionsNameToIdMap'=$reTransactionsNameToIdMap; 'fileRoot'=$fileRoot; 'vaultFolderCSVPath'=$vaultFolderCSVPath; 'vaultFolderCSV'=$vaultFolderCSV}))
+            $recordsCsv.AddRange($result['mapped']);
+            $recordsCsvNoAccount.AddRange($result['nonMapped']);
+            $recordsCsvToBig.AddRange($result['toBig']);
+            $deleteCSV.AddRange($result['deleteList']);
+            $unMappable.AddRange($result['unmappable']);
+            $googleDriveCSV.AddRange($result['driveList']);
+            $completedJobsCount+=1;
+            write-host "$completedJobsCount Finished"
+        })
     }
 
-    $recordsCsv | Export-Csv -Path C:\Users\dcurtin\Desktop\testCsv.csv -NoTypeInformation
-    $recordsCsvNoAccount | Export-Csv -Path C:\Users\dcurtin\Desktop\noAccounttestCsv.csv -NoTypeInformation
-    $recordsCsvToBig | Export-Csv -Path C:\Users\dcurtin\Desktop\ToBigtestCsv.csv -NoTypeInformation
-    $googleDriveCSV | Export-Csv -Path C:\Users\dcurtin\Desktop\googleDrive.csv -NoTypeInformation
-    $deleteCSV | Export-Csv -Path C:\Users\dcurtin\Desktop\deleteCsv.csv -NoTypeInformation
-    $unMappable | Export-Csv -Path C:\Users\dcurtin\Desktop\unMappable.csv -NoTypeInformation
+    if(-not $(test-path "$fileRoot\output"))
+    {
+        mkdir "$fileRoot\output";
+    }
+    $recordsCsv | Export-Csv -Path "$fileRoot\output\filesToUpload.csv" -NoTypeInformation
+    $recordsCsvNoAccount | Export-Csv -Path "$fileRoot\output\noMappingFound.csv" -NoTypeInformation
+    $recordsCsvToBig | Export-Csv -Path "$fileRoot\output\filesToBigToUpload.csv" -NoTypeInformation
+    $googleDriveCSV | Export-Csv -Path "$fileRoot\output\googleDrive.csv" -NoTypeInformation
+    $deleteCSV | Export-Csv -Path "$fileRoot\output\deleteCsv.csv" -NoTypeInformation
+    $unMappable | Export-Csv -Path "$fileRoot\output\noAssociatedRecord.csv" -NoTypeInformation
     Get-Job | Remove-Job -Force
 }
 
